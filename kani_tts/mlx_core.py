@@ -192,7 +192,7 @@ class MLXKaniModel:
         if self.status == "available_language_tags" and language_tag is None:
             print("=" * 40)
             print("!!! YOU NEED TO SELECT THE LANGUAGE TAG !!!")
-            print(f"Languages available:")
+            print("Languages available:")
             print(*self.language_tags_list, sep="\n")
             print("=" * 40)
         elif self.status == "no_language_tags" and language_tag is not None:

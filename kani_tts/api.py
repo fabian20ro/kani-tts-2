@@ -309,7 +309,7 @@ class KaniTTS:
             elif self.language_tags_list:
                 print(f"  Tags: {self.language_tags_list[0]}, {self.language_tags_list[1]}, ... (use .show_language_tags() to see all)")
         else:
-            print(f"  Mode: No language tags")
+            print("  Mode: No language tags")
 
         print()
         print("  Configuration:")
@@ -320,10 +320,10 @@ class KaniTTS:
         print(f"    • Tokens per Frame: {self.config.tokens_per_frame or 'Unknown'}")
         print(f"    • Audio Step: {self.config.audio_step or 'Unknown'}")
         if self.config.use_learnable_rope:
-            print(f"    • Learnable RoPE: Enabled (per-layer frequency scaling)")
+            print("    • Learnable RoPE: Enabled (per-layer frequency scaling)")
             print(f"    • Alpha Range: [{self.config.alpha_min or 'Unknown'}, {self.config.alpha_max or 'Unknown'}]")
         else:
-            print(f"    • Learnable RoPE: Disabled (standard RoPE)")
+            print("    • Learnable RoPE: Disabled (standard RoPE)")
 
         print("─" * 62)
         print()

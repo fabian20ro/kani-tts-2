@@ -4,7 +4,6 @@ from transformers import AutoTokenizer
 from dataclasses import dataclass
 from typing import Optional, Tuple
 import numpy as np
-import os
 
 
 def _get_device() -> str:
@@ -239,7 +238,7 @@ class KaniModel:
         if (self.status == 'available_language_tags') and (language_tag is None):
             print('='*40)
             print('!!! YOU NEED TO SELECT THE LANGUAGE TAG !!!')
-            print(f'Languages available:')
+            print('Languages available:')
             print(*self.language_tags_list, sep='\n')
             print('='*40)
         elif (self.status == 'no_language_tags') and (language_tag is not None):

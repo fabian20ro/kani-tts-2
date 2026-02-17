@@ -1,10 +1,8 @@
 """Tests for kani_tts.api — KaniTTS API logic (without loading models)."""
 
-import pytest
 import torch
-import numpy as np
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import tempfile
 import os
 

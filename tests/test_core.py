@@ -1,9 +1,7 @@
 """Tests for kani_tts.core — TTSConfig, NemoAudioPlayer token logic, device detection."""
 
-import pytest
 import torch
-import numpy as np
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from kani_tts.core import TTSConfig, _get_device
 

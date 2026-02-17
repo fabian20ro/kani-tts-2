@@ -10,7 +10,7 @@ Usage:
 """
 
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 
@@ -161,7 +161,7 @@ class KaniTTSMLX:
             text, language_tag, speaker_emb, temperature, top_p, repetition_penalty
         )
 
-    def _load_speaker_embedding(self, path) -> "mx.array":
+    def _load_speaker_embedding(self, path):
         """Load speaker embedding from file (.npy or .pt)."""
         import mlx.core as mx
 
@@ -198,7 +198,7 @@ class KaniTTSMLX:
         print("=" * 58)
         print()
         print(f"  Model: {self.model_path}")
-        print(f"  Device: MLX (Apple Silicon - Unified Memory)")
+        print("  Device: MLX (Apple Silicon - Unified Memory)")
         print()
 
         if self.status == "available_language_tags":
@@ -206,7 +206,7 @@ class KaniTTSMLX:
             if self.language_tags_list and len(self.language_tags_list) <= 5:
                 print(f"  Tags: {', '.join(self.language_tags_list)}")
         else:
-            print(f"  Mode: No language tags")
+            print("  Mode: No language tags")
 
         print()
         print("  Configuration:")
@@ -218,7 +218,7 @@ class KaniTTSMLX:
         if self.config.use_learnable_rope:
             print(f"    Learnable RoPE: Enabled [{self.config.alpha_min}, {self.config.alpha_max}]")
         else:
-            print(f"    Learnable RoPE: Disabled (standard RoPE)")
+            print("    Learnable RoPE: Disabled (standard RoPE)")
         print()
         print("  Ready to generate speech!")
         print()

@@ -10,16 +10,14 @@ Extends mlx-lm's LFM2 with:
 Requires: mlx, mlx-lm
 """
 
-from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Optional
 
 import mlx.core as mx
 import mlx.nn as nn
 
 from mlx_lm.models.lfm2 import (
-    Lfm2Model,
     MLP,
-    Model as Lfm2MLXModel,
     ModelArgs as Lfm2ModelArgs,
     ShortConv,
 )

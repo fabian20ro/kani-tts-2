@@ -1,6 +1,5 @@
 """Tests for kani_tts.model — PyTorch frame-level positions and learnable RoPE."""
 
-import pytest
 import torch
 
 from kani_tts.model import compute_frame_level_positions, LearnableRotaryEmbedding

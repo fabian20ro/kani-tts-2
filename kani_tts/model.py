@@ -12,7 +12,7 @@ FIXED: Proper frame-level position tracking during generation with KV-cache.
 
 import torch
 import torch.nn as nn
-from typing import Optional, Union, Tuple
+from typing import Optional, Union
 from transformers.modeling_outputs import CausalLMOutputWithPast, BaseModelOutputWithPast
 from transformers.utils import TransformersKwargs
 from transformers.processing_utils import Unpack
@@ -248,22 +248,22 @@ class Lfm2ForKaniModel(Lfm2Model):
                     # Conv layers don't use RoPE
                     self.learnable_rope_layers.append(None)
 
-            print(f"✅ Lfm2ForKaniModel initialized:")
+            print("✅ Lfm2ForKaniModel initialized:")
             print(f"   - Audio tokens start: {audio_tokens_start}")
             print(f"   - Tokens per frame: {tokens_per_frame}")
             print(f"   - Speaker embedding: {speaker_emb_dim} -> {config.hidden_size}")
-            print(f"   - Using frame-level position encoding (KaniTTS-2)")
+            print("   - Using frame-level position encoding (KaniTTS-2)")
             print(f"   - Learnable RoPE ENABLED for {total_attention_layers} attention layers")
             print(f"   - Alpha range: [{alpha_min}, {alpha_max}]")
         else:
             self.learnable_rope_layers = None
-            print(f"✅ Lfm2ForKaniModel initialized:")
+            print("✅ Lfm2ForKaniModel initialized:")
             print(f"   - Audio tokens start: {audio_tokens_start}")
             print(f"   - Tokens per frame: {tokens_per_frame}")
             print(f"   - Audio step: {audio_step}")
             print(f"   - Speaker embedding: {speaker_emb_dim} -> {config.hidden_size}")
-            print(f"   - Using frame-level position encoding (KaniTTS-2)")
-            print(f"   - Learnable RoPE DISABLED (standard RoPE)")
+            print("   - Using frame-level position encoding (KaniTTS-2)")
+            print("   - Learnable RoPE DISABLED (standard RoPE)")
 
     def forward(
         self,
@@ -744,7 +744,6 @@ class KaniTTS2ForCausalLM(Lfm2PreTrainedModel, GenerationMixin):
         alpha_min: float = None,
         alpha_max: float = None,
         speaker_emb_dim: int = None,
-        *model_args,
         **kwargs
     ):
         """
