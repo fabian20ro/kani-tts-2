@@ -13,6 +13,8 @@
 
 KaniTTS-2 is a research-grade TTS system built on causal language models with advanced architectural innovations. It's simple to use, but powerful under the hood.
 
+> **License Notice:** Upstream license is currently unclear/missing. This fork exists for review and contribution; do not redistribute or publish derived artifacts until the license is confirmed.
+
 ## What's New in KaniTTS-2?
 
 Major architectural improvements over the first release:
