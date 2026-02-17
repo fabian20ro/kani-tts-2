@@ -11,6 +11,15 @@ import os
 from .model import KaniTTS2ForCausalLM
 
 
+def _get_device() -> str:
+    """Auto-detect the best available device: cuda > mps > cpu."""
+    if torch.cuda.is_available():
+        return 'cuda'
+    if torch.backends.mps.is_available():
+        return 'mps'
+    return 'cpu'
+
+
 @dataclass
 class TTSConfig:
     """Configuration for TTS model."""
@@ -43,6 +52,7 @@ class NemoAudioPlayer:
         self.conf = config
         self.nemo_codec_model = AudioCodecModel\
                 .from_pretrained(self.conf.nanocodec_model).eval()
+        # NeMo codec stays on CPU when using MPS (potential compatibility issues)
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.nemo_codec_model.to(self.device)
         self.text_tokenizer_name = text_tokenizer_name
@@ -120,10 +130,13 @@ class KaniModel:
     def __init__(self, config: TTSConfig, model_name: str, player: NemoAudioPlayer) -> None:
         self.conf = config
         self.player = player
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device = _get_device()
 
         # Pass parameters to from_pretrained
         # None values will trigger reading from model config
+        # MPS does not reliably support bfloat16; use float16 there
+        model_dtype = torch.float16 if self.device == 'mps' else torch.bfloat16
+
         self.model = KaniTTS2ForCausalLM.from_pretrained(
             model_name,
             audio_tokens_start=self.player.audio_tokens_start,
@@ -133,7 +146,7 @@ class KaniModel:
             alpha_min=self.conf.alpha_min,
             alpha_max=self.conf.alpha_max,
             speaker_emb_dim=self.conf.speaker_emb_dim,
-            torch_dtype=torch.bfloat16,
+            torch_dtype=model_dtype,
             device_map=self.conf.device_map,
         )
 

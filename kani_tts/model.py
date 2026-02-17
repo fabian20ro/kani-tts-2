@@ -861,10 +861,15 @@ class KaniTTS2ForCausalLM(Lfm2PreTrainedModel, GenerationMixin):
                 # If generation config not found, create a default one
                 model.generation_config = GenerationConfig()
 
-            # Determine device from base_kwargs or use CUDA if available
+            # Determine device from base_kwargs or use best available
             device_map = base_kwargs.get('device_map', 'auto')
             if device_map == 'auto':
-                device = 'cuda' if torch.cuda.is_available() else 'cpu'
+                if torch.cuda.is_available():
+                    device = 'cuda'
+                elif torch.backends.mps.is_available():
+                    device = 'mps'
+                else:
+                    device = 'cpu'
                 model = model.to(device)
             # else: device_map will handle device placement automatically
         else:

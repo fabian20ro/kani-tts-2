@@ -292,7 +292,12 @@ class KaniTTS:
         print(f"  Model: {model_display}")
 
         # Device info
-        device = "GPU (CUDA)" if torch.cuda.is_available() else "CPU"
+        if torch.cuda.is_available():
+            device = "GPU (CUDA)"
+        elif torch.backends.mps.is_available():
+            device = "MPS (Apple Silicon)"
+        else:
+            device = "CPU"
         print(f"  Device: {device}")
 
         # Language tags info
