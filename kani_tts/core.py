@@ -1,14 +1,10 @@
 """Core components for Kani-TTS-2 audio generation."""
 import torch
-from nemo.collections.tts.models import AudioCodecModel
 from transformers import AutoTokenizer
 from dataclasses import dataclass
 from typing import Optional, Tuple
 import numpy as np
 import os
-
-# Import KaniTTS-2 custom model
-from .model import KaniTTS2ForCausalLM
 
 
 def _get_device() -> str:
@@ -50,6 +46,7 @@ class NemoAudioPlayer:
 
     def __init__(self, config: TTSConfig, text_tokenizer_name: Optional[str] = None) -> None:
         self.conf = config
+        from nemo.collections.tts.models import AudioCodecModel
         self.nemo_codec_model = AudioCodecModel\
                 .from_pretrained(self.conf.nanocodec_model).eval()
         # NeMo codec stays on CPU when using MPS (potential compatibility issues)
@@ -137,6 +134,7 @@ class KaniModel:
         # MPS does not reliably support bfloat16; use float16 there
         model_dtype = torch.float16 if self.device == 'mps' else torch.bfloat16
 
+        from .model import KaniTTS2ForCausalLM
         self.model = KaniTTS2ForCausalLM.from_pretrained(
             model_name,
             audio_tokens_start=self.player.audio_tokens_start,

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=82.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -26,29 +26,29 @@ classifiers = [
 ]
 
 dependencies = [
-    "torch>=2.8.0",
-    "nemo-toolkit[tts]==2.4.0",
+    "torch>=2.10.0",
+    "nemo-toolkit[tts]>=2.6.0",
     "numpy>=1.24.0",
     "scipy>=1.10.0",
-    "librosa>=0.10.0",
+    "librosa>=0.11.0",
     "omegaconf>=2.3.0",
-    "torchaudio>=2.8.0",
+    "torchaudio>=2.10.0",
     "torchcodec>=0.10.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0",
-    "black>=23.0.0",
-    "isort>=5.12.0",
-    "flake8>=6.0.0",
+    "pytest>=9.0.0",
+    "black>=26.1.0",
+    "isort>=7.0.0",
+    "flake8>=7.3.0",
 ]
 audio = [
-    "soundfile>=0.12.0",
+    "soundfile>=0.13.0",
 ]
 mlx = [
-    "mlx>=0.24.0",
-    "mlx-lm>=0.22.0",
+    "mlx>=0.30.0",
+    "mlx-lm>=0.30.0",
     "nanocodec-mlx",
 ]
 
@@ -69,3 +69,7 @@ target-version = ["py310"]
 [tool.isort]
 profile = "black"
 line_length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
