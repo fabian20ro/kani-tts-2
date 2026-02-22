@@ -50,8 +50,8 @@ def convert_weights(model_path: str, output_path: str, dtype: str = "float16"):
     with open(config_path) as f:
         config = json.load(f)
 
-    # Map dtype
-    dtype_map = {"float16": np.float16, "float32": np.float32, "bfloat16": np.float16}
+    # Map dtype (bfloat16 -> float32 since numpy has no bfloat16 support)
+    dtype_map = {"float16": np.float16, "float32": np.float32, "bfloat16": np.float32}
     np_dtype = dtype_map.get(dtype, np.float16)
 
     # Convert weights
@@ -68,8 +68,14 @@ def convert_weights(model_path: str, output_path: str, dtype: str = "float16"):
                 continue
 
         # Conv weight transpose: PyTorch (out, in/groups, kernel) -> MLX (out, kernel, in/groups)
+        # Only transpose when kernel_size (dim 2) > in_channels (dim 1), indicating PyTorch layout
         if "conv.weight" in name and np_array.ndim == 3:
-            if np_array.shape[-1] > np_array.shape[1]:
+            out_ch, in_ch, kernel = np_array.shape
+            if kernel > in_ch:
+                np_array = np_array.transpose(0, 2, 1)
+            elif kernel == in_ch:
+                print(f"  ⚠️  Ambiguous conv shape for {name}: {np_array.shape} "
+                      f"(kernel_size == in_channels). Assuming PyTorch layout, transposing.")
                 np_array = np_array.transpose(0, 2, 1)
 
         # Drop lm_head.weight if tied (mlx-lm uses embed_tokens.as_linear)

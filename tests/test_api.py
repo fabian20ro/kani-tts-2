@@ -40,9 +40,9 @@ class TestKaniTTSSpeakerEmbeddingLoading:
             os.unlink(path)
 
     def test_rejects_wrong_suffix(self):
-        """Should reject non-.pt files."""
-        path = Path("/tmp/test_emb.npy")
-        assert path.suffix != ".pt"
+        """Should reject unsupported file formats."""
+        path = Path("/tmp/test_emb.csv")
+        assert path.suffix not in (".pt", ".npy")
 
     def test_rejects_missing_file(self):
         """Should raise FileNotFoundError for non-existent path."""

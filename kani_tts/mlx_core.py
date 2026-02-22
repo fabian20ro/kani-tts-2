@@ -9,6 +9,7 @@ import mlx.core as mx
 import numpy as np
 from transformers import AutoTokenizer
 
+from ._tokens import TokenLayout
 from .mlx_model import KaniTTS2MLXModel, KaniTTSModelArgs, generate
 
 
@@ -30,23 +31,14 @@ class MLXTTSConfig:
     speaker_emb_dim: Optional[int] = None
 
 
-class MLXAudioPlayer:
+class MLXAudioPlayer(TokenLayout):
     """Handles audio codec operations using nanocodec-mlx."""
 
     def __init__(self, config: MLXTTSConfig):
+        super().__init__(tokeniser_length=config.tokeniser_length)
         self.conf = config
-        self.tokeniser_length = config.tokeniser_length
         self.start_of_text = config.start_of_text
         self.end_of_text = config.end_of_text
-        self.start_of_speech = self.tokeniser_length + 1
-        self.end_of_speech = self.tokeniser_length + 2
-        self.start_of_human = self.tokeniser_length + 3
-        self.end_of_human = self.tokeniser_length + 4
-        self.start_of_ai = self.tokeniser_length + 5
-        self.end_of_ai = self.tokeniser_length + 6
-        self.pad_token = self.tokeniser_length + 7
-        self.audio_tokens_start = self.tokeniser_length + 10
-        self.codebook_size = 4032
 
         # Load nanocodec-mlx
         try:
@@ -101,7 +93,7 @@ class MLXAudioPlayer:
         audio_codes, length = self.get_nano_codes(out_ids)
 
         reconstructed, _ = self.codec.decode(tokens=audio_codes, tokens_len=length)
-        output_audio = np.array(reconstructed).squeeze()
+        output_audio = np.array(reconstructed).squeeze(0)
         return output_audio
 
 
@@ -138,13 +130,18 @@ class MLXKaniModel:
             layer_types=model_config.get("layer_types"),
             # KaniTTS-2 specific
             audio_tokens_start=player.audio_tokens_start,
-            tokens_per_frame=config.tokens_per_frame or model_config.get("tokens_per_frame", 4),
-            audio_step=config.audio_step or model_config.get("audio_step", 1.0),
+            tokens_per_frame=config.tokens_per_frame if config.tokens_per_frame is not None
+                else model_config.get("tokens_per_frame", 4),
+            audio_step=config.audio_step if config.audio_step is not None
+                else model_config.get("audio_step", 1.0),
             use_learnable_rope=config.use_learnable_rope if config.use_learnable_rope is not None
                 else model_config.get("use_learnable_rope", False),
-            alpha_min=config.alpha_min or model_config.get("alpha_min", 0.1),
-            alpha_max=config.alpha_max or model_config.get("alpha_max", 2.0),
-            speaker_emb_dim=config.speaker_emb_dim or model_config.get("speaker_emb_dim", 128),
+            alpha_min=config.alpha_min if config.alpha_min is not None
+                else model_config.get("alpha_min", 0.1),
+            alpha_max=config.alpha_max if config.alpha_max is not None
+                else model_config.get("alpha_max", 2.0),
+            speaker_emb_dim=config.speaker_emb_dim if config.speaker_emb_dim is not None
+                else model_config.get("speaker_emb_dim", 128),
         )
 
         # Create model

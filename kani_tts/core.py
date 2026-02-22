@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 import numpy as np
 
+from ._tokens import TokenLayout
+
 
 def _get_device() -> str:
     """Auto-detect the best available device: cuda > mps > cpu."""
@@ -40,10 +42,11 @@ class TTSConfig:
     speaker_emb_dim: Optional[int] = None  # Dimension of speaker embeddings
 
 
-class NemoAudioPlayer:
+class NemoAudioPlayer(TokenLayout):
     """Handles audio codec operations using NVIDIA NeMo."""
 
     def __init__(self, config: TTSConfig, text_tokenizer_name: Optional[str] = None) -> None:
+        super().__init__(tokeniser_length=config.tokeniser_length)
         self.conf = config
         from nemo.collections.tts.models import AudioCodecModel
         self.nemo_codec_model = AudioCodecModel\
@@ -55,18 +58,8 @@ class NemoAudioPlayer:
         if self.text_tokenizer_name:
             self.tokenizer = AutoTokenizer.from_pretrained(self.text_tokenizer_name)
 
-        self.tokeniser_length = self.conf.tokeniser_length
         self.start_of_text = self.conf.start_of_text
         self.end_of_text = self.conf.end_of_text
-        self.start_of_speech = self.tokeniser_length + 1
-        self.end_of_speech = self.tokeniser_length + 2
-        self.start_of_human = self.tokeniser_length + 3
-        self.end_of_human = self.tokeniser_length + 4
-        self.start_of_ai = self.tokeniser_length + 5
-        self.end_of_ai = self.tokeniser_length + 6
-        self.pad_token = self.tokeniser_length + 7
-        self.audio_tokens_start = self.tokeniser_length + 10
-        self.codebook_size = 4032
 
     def output_validation(self, out_ids: torch.Tensor) -> None:
         """Validate that output contains required speech markers."""

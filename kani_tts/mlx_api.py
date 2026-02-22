@@ -14,27 +14,8 @@ from typing import Optional, Tuple
 
 import numpy as np
 
+from ._utils import suppress_all_logs, save_audio as _save_audio, show_language_tags as _show_language_tags
 from .mlx_core import MLXAudioPlayer, MLXKaniModel, MLXTTSConfig
-
-
-def _suppress_logs():
-    """Suppress library logging output."""
-    import logging
-    import warnings
-
-    warnings.filterwarnings("ignore")
-
-    for logger_name in ["nemo", "nemo_logger", "torch", "pytorch",
-                         "transformers", "numba", "matplotlib", "PIL"]:
-        logging.getLogger(logger_name).setLevel(logging.ERROR)
-    logging.getLogger().setLevel(logging.ERROR)
-
-    try:
-        import transformers
-        transformers.logging.set_verbosity_error()
-        transformers.logging.disable_progress_bar()
-    except ImportError:
-        pass
 
 
 class KaniTTSMLX:
@@ -78,7 +59,7 @@ class KaniTTSMLX:
             speaker_emb_dim: Speaker embedding dimension (None = from config)
         """
         if suppress_logs:
-            _suppress_logs()
+            suppress_all_logs()
 
         self.config = MLXTTSConfig(
             tokeniser_length=tokeniser_length,
@@ -148,7 +129,7 @@ class KaniTTSMLX:
         # Handle speaker embedding loading
         if speaker_emb is not None:
             if isinstance(speaker_emb, (str, Path)):
-                speaker_emb = self._load_speaker_embedding(speaker_emb)
+                speaker_emb = self.load_speaker_embedding(speaker_emb)
             elif isinstance(speaker_emb, np.ndarray):
                 speaker_emb = mx.array(speaker_emb)
             # If it's already mx.array, use as-is
@@ -161,7 +142,7 @@ class KaniTTSMLX:
             text, language_tag, speaker_emb, temperature, top_p, repetition_penalty
         )
 
-    def _load_speaker_embedding(self, path):
+    def load_speaker_embedding(self, path):
         """Load speaker embedding from file (.npy or .pt)."""
         import mlx.core as mx
 
@@ -181,14 +162,7 @@ class KaniTTSMLX:
 
     def save_audio(self, audio: np.ndarray, output_path: str):
         """Save audio waveform to file."""
-        try:
-            import soundfile as sf
-            sf.write(output_path, audio, self.sample_rate)
-        except ImportError:
-            raise ImportError(
-                "soundfile is required to save audio. "
-                "Install it with: pip install soundfile"
-            )
+        _save_audio(audio, output_path, self.sample_rate)
 
     def _show_model_info(self):
         """Display model information."""
@@ -225,12 +199,4 @@ class KaniTTSMLX:
 
     def show_language_tags(self):
         """Display available language tags."""
-        print("=" * 50)
-        if self.status == "available_language_tags":
-            print("Available language tags:")
-            print("-" * 50)
-            for i, tag in enumerate(self.language_tags_list, 1):
-                print(f"  {i}. {tag}")
-        else:
-            print("This model does not support language tag selection.")
-        print("=" * 50)
+        _show_language_tags(self.status, self.language_tags_list)

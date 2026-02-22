@@ -10,6 +10,8 @@ Compatible with Flash Attention 2 for 10-20x training speedup.
 FIXED: Proper frame-level position tracking during generation with KV-cache.
 """
 
+import threading
+
 import torch
 import torch.nn as nn
 from typing import Optional, Union
@@ -447,6 +449,8 @@ class KaniTTS2ForCausalLM(Lfm2PreTrainedModel, GenerationMixin):
         self._generation_state = None
         # Current speaker embedding for generation (set by generate())
         self._current_speaker_emb = None
+        # Lock to prevent concurrent generation from corrupting state
+        self._generation_lock = threading.Lock()
 
         # Set generation config
         self.generation_config = config.generation_config if hasattr(config, 'generation_config') else None
@@ -712,6 +716,7 @@ class KaniTTS2ForCausalLM(Lfm2PreTrainedModel, GenerationMixin):
 
         This ensures frame-level position tracking starts fresh for each generation call.
         Also handles speaker embeddings if provided.
+        Thread-safe: concurrent calls will serialize via lock.
 
         Args:
             speaker_emb: Optional speaker embedding [batch_size, speaker_emb_dim]
@@ -719,17 +724,18 @@ class KaniTTS2ForCausalLM(Lfm2PreTrainedModel, GenerationMixin):
         # Extract speaker_emb from kwargs if provided
         speaker_emb = kwargs.pop('speaker_emb', None)
 
-        # Reset state before generation
-        self._generation_state = None
-        self._current_speaker_emb = speaker_emb
-
-        try:
-            # Call parent generate
-            result = super().generate(*args, **kwargs)
-        finally:
-            # Clean up state after generation (even if error)
+        with self._generation_lock:
+            # Reset state before generation
             self._generation_state = None
-            self._current_speaker_emb = None
+            self._current_speaker_emb = speaker_emb
+
+            try:
+                # Call parent generate
+                result = super().generate(*args, **kwargs)
+            finally:
+                # Clean up state after generation (even if error)
+                self._generation_state = None
+                self._current_speaker_emb = None
 
         return result
 
