@@ -83,10 +83,14 @@ class NemoAudioPlayer:
             raise ValueError('Invalid audio codes sequence!')
 
         audio_codes = out_ids[start_a_idx+1 : end_a_idx]
+        if len(audio_codes) == 0:
+            raise ValueError('No audio tokens generated between speech markers!')
         if len(audio_codes) % 4:
             raise ValueError('The length of the sequence must be a multiple of 4!')
         audio_codes = audio_codes.reshape(-1, 4)
-        audio_codes = audio_codes - torch.tensor([self.codebook_size * i for i in range(4)])
+        audio_codes = audio_codes - torch.tensor(
+            [self.codebook_size * i for i in range(4)], device=audio_codes.device
+        )
         audio_codes = audio_codes - self.audio_tokens_start
         if (audio_codes < 0).sum().item() > 0:
             raise ValueError('Invalid audio tokens!')
@@ -111,7 +115,7 @@ class NemoAudioPlayer:
         audio_codes, len_ = audio_codes.to(self.device), len_.to(self.device)
         with torch.inference_mode():
             reconstructed_audio, _ = self.nemo_codec_model.decode(tokens=audio_codes, tokens_len=len_)
-            output_audio = reconstructed_audio.cpu().detach().numpy().squeeze()
+            output_audio = reconstructed_audio.cpu().detach().numpy().squeeze(0)
 
         if self.text_tokenizer_name:
             text = self.get_text(out_ids)
@@ -155,7 +159,7 @@ class KaniModel:
         self.status = 'no_language_tags'
         self.language_tags_list = []
         if self.language_settings is not None:
-            self.status = self.language_settings.get('status')
+            self.status = self.language_settings.get('status', 'no_language_tags')
             self.language_tags_list = self.language_settings.get('language_tags_list', [])
 
     def get_input_ids(self, text_prompt: str, language_tag: str = None) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -236,15 +240,16 @@ class KaniModel:
             repetition_penalty: Repetition penalty (default: 1.1)
         """
         if (self.status == 'available_language_tags') and (language_tag is None):
-            print('='*40)
-            print('!!! YOU NEED TO SELECT THE LANGUAGE TAG !!!')
-            print('Languages available:')
-            print(*self.language_tags_list, sep='\n')
-            print('='*40)
+            available = ', '.join(self.language_tags_list)
+            raise ValueError(
+                f"This model requires a language_tag. "
+                f"Available tags: {available}"
+            )
         elif (self.status == 'no_language_tags') and (language_tag is not None):
-            print('='*40)
-            print('!!! This model does not support language tag selection !!!')
-            print('='*40)
+            raise ValueError(
+                f"This model does not support language tags, "
+                f"but language_tag='{language_tag}' was provided."
+            )
 
         input_ids, attention_mask = self.get_input_ids(text, language_tag)
         model_output = self.model_request(input_ids, attention_mask,

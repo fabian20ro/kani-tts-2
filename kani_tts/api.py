@@ -230,20 +230,20 @@ class KaniTTS:
         if path.suffix != '.pt':
             raise ValueError(f"Speaker embedding must be a .pt file, got: {path.suffix}")
 
-        speaker_emb = torch.load(path)
+        speaker_emb = torch.load(path, weights_only=True)
 
         # Validate shape
+        expected_dim = self.config.speaker_emb_dim
         if speaker_emb.ndim == 1:
-            expected_dim = self.config.speaker_emb_dim
-            if speaker_emb.shape[0] != expected_dim:
+            if expected_dim is not None and speaker_emb.shape[0] != expected_dim:
                 raise ValueError(
                     f"Speaker embedding has wrong dimension: expected {expected_dim}, "
                     f"got {speaker_emb.shape[0]}"
                 )
         elif speaker_emb.ndim == 2:
-            if speaker_emb.shape[1] != self.config.speaker_emb_dim:
+            if expected_dim is not None and speaker_emb.shape[1] != expected_dim:
                 raise ValueError(
-                    f"Speaker embedding has wrong dimension: expected [..., {self.config.speaker_emb_dim}], "
+                    f"Speaker embedding has wrong dimension: expected [..., {expected_dim}], "
                     f"got {speaker_emb.shape}"
                 )
         else:

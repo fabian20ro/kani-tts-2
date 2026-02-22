@@ -377,6 +377,11 @@ class KaniTTS2MLXModel(nn.Module):
 
 def sample_token(logits: mx.array, temperature: float = 1.0, top_p: float = 0.95) -> mx.array:
     """Sample a single token from logits with temperature and top-p."""
+    if temperature < 0:
+        raise ValueError(f"temperature must be >= 0, got {temperature}")
+    if not (0 < top_p <= 1.0):
+        raise ValueError(f"top_p must be in (0, 1], got {top_p}")
+
     if temperature == 0:
         return mx.argmax(logits, axis=-1)
 
@@ -403,6 +408,8 @@ def sample_token(logits: mx.array, temperature: float = 1.0, top_p: float = 0.95
 
 def apply_repetition_penalty(logits: mx.array, generated_ids: list, penalty: float = 1.1) -> mx.array:
     """Apply repetition penalty to logits based on already-generated tokens."""
+    if penalty <= 0:
+        raise ValueError(f"repetition_penalty must be > 0, got {penalty}")
     if penalty == 1.0 or not generated_ids:
         return logits
 

@@ -174,7 +174,7 @@ class KaniTTSMLX:
             return mx.array(arr)
         elif path.suffix == ".pt":
             import torch
-            t = torch.load(path, map_location="cpu")
+            t = torch.load(path, map_location="cpu", weights_only=True)
             return mx.array(t.numpy())
         else:
             raise ValueError(f"Unsupported speaker embedding format: {path.suffix}. Use .npy or .pt")

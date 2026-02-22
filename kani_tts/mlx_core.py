@@ -76,6 +76,8 @@ class MLXAudioPlayer:
             raise ValueError("Invalid audio codes sequence!")
 
         audio_codes = out_ids[start_idx + 1: end_idx]
+        if len(audio_codes) == 0:
+            raise ValueError("No audio tokens generated between speech markers!")
         if len(audio_codes) % 4:
             raise ValueError("Audio sequence length must be a multiple of 4!")
 
@@ -190,15 +192,16 @@ class MLXKaniModel:
     ) -> Tuple[np.ndarray, str]:
         """Generate audio from text using MLX."""
         if self.status == "available_language_tags" and language_tag is None:
-            print("=" * 40)
-            print("!!! YOU NEED TO SELECT THE LANGUAGE TAG !!!")
-            print("Languages available:")
-            print(*self.language_tags_list, sep="\n")
-            print("=" * 40)
+            available = ", ".join(self.language_tags_list)
+            raise ValueError(
+                f"This model requires a language_tag. "
+                f"Available tags: {available}"
+            )
         elif self.status == "no_language_tags" and language_tag is not None:
-            print("=" * 40)
-            print("!!! This model does not support language tag selection !!!")
-            print("=" * 40)
+            raise ValueError(
+                f"This model does not support language tags, "
+                f"but language_tag='{language_tag}' was provided."
+            )
 
         input_ids = self.get_input_ids(text, language_tag)
 

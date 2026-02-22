@@ -801,6 +801,9 @@ class KaniTTS2ForCausalLM(Lfm2PreTrainedModel, GenerationMixin):
         if speaker_emb_dim is None:
             speaker_emb_dim = getattr(config, 'speaker_emb_dim', 128)
 
+        print(f"   Config: tokens_per_frame={tokens_per_frame}, audio_step={audio_step}, "
+              f"use_learnable_rope={use_learnable_rope}, speaker_emb_dim={speaker_emb_dim}")
+
         # Create model with KaniTTS-2 position encoding and optional learnable RoPE
         model = cls(
             config=config,
@@ -842,12 +845,23 @@ class KaniTTS2ForCausalLM(Lfm2PreTrainedModel, GenerationMixin):
                 model.lm_head.weight = model.model.embed_tokens.weight
                 missing_keys = [k for k in missing_keys if k != 'lm_head.weight']
 
+            # Validate critical custom weights are present
+            critical_prefixes = ['model.speaker_emb_projection']
+            if use_learnable_rope:
+                critical_prefixes.append('model.learnable_rope_layers')
+            critical_missing = [k for k in missing_keys
+                                if any(k.startswith(p) for p in critical_prefixes)]
+            if critical_missing:
+                raise RuntimeError(
+                    f"Critical KaniTTS-2 weights missing from checkpoint "
+                    f"(would be randomly initialized): {critical_missing}"
+                )
+
             # Log loading info
             if missing_keys:
                 print(f"   ⚠️  Missing keys (will use random initialization): {len(missing_keys)}")
-                if len(missing_keys) <= 5:
-                    for key in missing_keys:
-                        print(f"      - {key}")
+                for key in missing_keys:
+                    print(f"      - {key}")
             if unexpected_keys:
                 print(f"   ⚠️  Unexpected keys (ignored): {len(unexpected_keys)}")
 
@@ -856,8 +870,8 @@ class KaniTTS2ForCausalLM(Lfm2PreTrainedModel, GenerationMixin):
             try:
                 generation_config = GenerationConfig.from_pretrained(pretrained_model_name_or_path)
                 model.generation_config = generation_config
-            except Exception:
-                # If generation config not found, create a default one
+            except (OSError, ValueError):
+                # If generation config not found or invalid, create a default one
                 model.generation_config = GenerationConfig()
 
             # Determine device from base_kwargs or use best available
