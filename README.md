@@ -13,6 +13,8 @@
 
 KaniTTS-2 is a research-grade TTS system built on causal language models with advanced architectural innovations. It's simple to use, but powerful under the hood.
 
+> **License Notice:** Upstream license is currently unclear/missing. This fork exists for review and contribution; do not redistribute or publish derived artifacts until the license is confirmed.
+
 ## What's New in KaniTTS-2?
 
 Major architectural improvements over the first release:
@@ -449,12 +451,13 @@ Input text + optional (language_tag, speaker_emb)
 ## Requirements
 
 - Python 3.10 or higher
-- CUDA-capable GPU (recommended, CPU works but slower)
+- CUDA-capable GPU (recommended), Apple Silicon Mac (via MPS or MLX), or CPU
 - PyTorch 2.0 or higher
 - Transformers 4.57.1+ (for LLaMA-based models)
 - NeMo Toolkit (for audio codec)
 - soundfile (for saving audio)
 - torchaudio (optional, for speaker embedding extraction from audio files)
+- For MLX backend: `pip install kani-tts-2[mlx]` (macOS Apple Silicon only)
 
 ## Model Compatibility
 
@@ -644,6 +647,51 @@ If you use this code in your research, please cite:
 ## vLLM Integration
 
 Coming soon.
+
+## macOS / Apple Silicon (MLX)
+
+KaniTTS-2 supports native inference on Apple Silicon Macs via [MLX](https://github.com/ml-explore/mlx).
+
+### Quick Start (PyTorch MPS)
+
+The PyTorch backend now auto-detects Apple Silicon and uses the MPS device:
+
+```python
+from kani_tts import KaniTTS
+
+# Automatically uses MPS on Apple Silicon (falls back to CPU if unavailable)
+model = KaniTTS('nineninesix/your-model-name')
+audio, text = model("Hello from macOS!")
+```
+
+### MLX Backend (Recommended for Apple Silicon)
+
+For best performance on Apple Silicon, use the MLX backend:
+
+```bash
+# Install MLX dependencies
+pip install kani-tts-2[mlx]
+
+# Convert weights to MLX format
+python scripts/convert_to_mlx.py \
+    --model nineninesix/kani-tts-2-en \
+    --output ./kani-tts-2-en-mlx
+```
+
+```python
+from kani_tts import KaniTTSMLX
+
+model = KaniTTSMLX("./kani-tts-2-en-mlx")
+audio, text = model("Hello from Apple Silicon!")
+model.save_audio(audio, "output.wav")
+
+# Voice cloning works the same way
+audio, text = model("Cloned voice!", speaker_emb="my_voice.npy")
+```
+
+**Requirements**: macOS with Apple Silicon (M1/M2/M3/M4), Python 3.10+
+
+**Memory**: The full pipeline uses ~1.6GB. A Mac with 16GB+ unified memory is sufficient.
 
 ## Tech Report
 

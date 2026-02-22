@@ -2,43 +2,9 @@
 from typing import Tuple, Optional, Union
 from pathlib import Path
 import numpy as np
-import logging
-import warnings
 import torch
 from .core import TTSConfig, NemoAudioPlayer, KaniModel
-
-
-def suppress_all_logs():
-    """
-    Suppress all logging output from transformers, NeMo, PyTorch, and other libraries.
-    Only print() statements from user code will be visible.
-    """
-    # Suppress Python warnings
-    warnings.filterwarnings('ignore')
-
-    # Suppress transformers logs
-    try:
-        import transformers
-        transformers.logging.set_verbosity_error()
-        transformers.logging.disable_progress_bar()
-    except ImportError:
-        pass
-
-    # Suppress NeMo logs
-    logging.getLogger('nemo').setLevel(logging.ERROR)
-    logging.getLogger('nemo_logger').setLevel(logging.ERROR)
-
-    # Suppress PyTorch logs
-    logging.getLogger('torch').setLevel(logging.ERROR)
-    logging.getLogger('pytorch').setLevel(logging.ERROR)
-
-    # Suppress other common loggers
-    logging.getLogger('numba').setLevel(logging.ERROR)
-    logging.getLogger('matplotlib').setLevel(logging.ERROR)
-    logging.getLogger('PIL').setLevel(logging.ERROR)
-
-    # Set root logger to ERROR level
-    logging.getLogger().setLevel(logging.ERROR)
+from ._utils import suppress_all_logs, save_audio as _save_audio, show_language_tags as _show_language_tags
 
 
 class KaniTTS:
@@ -215,10 +181,10 @@ class KaniTTS:
 
     def load_speaker_embedding(self, path: Union[str, Path]) -> torch.Tensor:
         """
-        Load speaker embedding from a .pt file.
+        Load speaker embedding from a .pt or .npy file.
 
         Args:
-            path: Path to .pt file containing speaker embedding
+            path: Path to .pt or .npy file containing speaker embedding
 
         Returns:
             Speaker embedding tensor [speaker_emb_dim] or [1, speaker_emb_dim]
@@ -227,23 +193,25 @@ class KaniTTS:
         if not path.exists():
             raise FileNotFoundError(f"Speaker embedding file not found: {path}")
 
-        if path.suffix != '.pt':
-            raise ValueError(f"Speaker embedding must be a .pt file, got: {path.suffix}")
-
-        speaker_emb = torch.load(path)
+        if path.suffix == '.npy':
+            speaker_emb = torch.from_numpy(np.load(path)).float()
+        elif path.suffix == '.pt':
+            speaker_emb = torch.load(path, weights_only=True)
+        else:
+            raise ValueError(f"Speaker embedding must be a .pt or .npy file, got: {path.suffix}")
 
         # Validate shape
+        expected_dim = self.config.speaker_emb_dim
         if speaker_emb.ndim == 1:
-            expected_dim = self.config.speaker_emb_dim
-            if speaker_emb.shape[0] != expected_dim:
+            if expected_dim is not None and speaker_emb.shape[0] != expected_dim:
                 raise ValueError(
                     f"Speaker embedding has wrong dimension: expected {expected_dim}, "
                     f"got {speaker_emb.shape[0]}"
                 )
         elif speaker_emb.ndim == 2:
-            if speaker_emb.shape[1] != self.config.speaker_emb_dim:
+            if expected_dim is not None and speaker_emb.shape[1] != expected_dim:
                 raise ValueError(
-                    f"Speaker embedding has wrong dimension: expected [..., {self.config.speaker_emb_dim}], "
+                    f"Speaker embedding has wrong dimension: expected [..., {expected_dim}], "
                     f"got {speaker_emb.shape}"
                 )
         else:
@@ -259,14 +227,7 @@ class KaniTTS:
             audio: Audio waveform as numpy array
             output_path: Path to save audio file (e.g., "output.wav")
         """
-        try:
-            import soundfile as sf
-            sf.write(output_path, audio, self.sample_rate)
-        except ImportError:
-            raise ImportError(
-                "soundfile is required to save audio. "
-                "Install it with: pip install soundfile"
-            )
+        _save_audio(audio, output_path, self.sample_rate)
 
     def show_model_info(self):
         """
@@ -292,7 +253,12 @@ class KaniTTS:
         print(f"  Model: {model_display}")
 
         # Device info
-        device = "GPU (CUDA)" if torch.cuda.is_available() else "CPU"
+        if torch.cuda.is_available():
+            device = "GPU (CUDA)"
+        elif torch.backends.mps.is_available():
+            device = "MPS (Apple Silicon)"
+        else:
+            device = "CPU"
         print(f"  Device: {device}")
 
         # Language tags info
@@ -304,7 +270,7 @@ class KaniTTS:
             elif self.language_tags_list:
                 print(f"  Tags: {self.language_tags_list[0]}, {self.language_tags_list[1]}, ... (use .show_language_tags() to see all)")
         else:
-            print(f"  Mode: No language tags")
+            print("  Mode: No language tags")
 
         print()
         print("  Configuration:")
@@ -315,27 +281,16 @@ class KaniTTS:
         print(f"    • Tokens per Frame: {self.config.tokens_per_frame or 'Unknown'}")
         print(f"    • Audio Step: {self.config.audio_step or 'Unknown'}")
         if self.config.use_learnable_rope:
-            print(f"    • Learnable RoPE: Enabled (per-layer frequency scaling)")
+            print("    • Learnable RoPE: Enabled (per-layer frequency scaling)")
             print(f"    • Alpha Range: [{self.config.alpha_min or 'Unknown'}, {self.config.alpha_max or 'Unknown'}]")
         else:
-            print(f"    • Learnable RoPE: Disabled (standard RoPE)")
+            print("    • Learnable RoPE: Disabled (standard RoPE)")
 
         print("─" * 62)
         print()
         print("  Ready to generate speech! 🎵")
         print()
 
-    def show_language_tags(self)->None:
-
-        print("=" * 50)
-        if self.status == 'available_language_tags':
-            print("Available language tags:")
-            print("-" * 50)
-            if self.language_tags_list:
-                for i, tag in enumerate(self.language_tags_list, 1):
-                    print(f"  {i}. {tag}")
-            else:
-                print("  No tags configured")
-        else:
-            print("This model does not support language tag selection.")
-        print("=" * 50)
+    def show_language_tags(self) -> None:
+        """Display available language tags."""
+        _show_language_tags(self.status, self.language_tags_list)

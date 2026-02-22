@@ -137,7 +137,12 @@ class SpeakerEmbedder:
 
         # Auto-detect device if not specified
         if device is None:
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            if torch.cuda.is_available():
+                self.device = torch.device("cuda")
+            elif torch.backends.mps.is_available():
+                self.device = torch.device("mps")
+            else:
+                self.device = torch.device("cpu")
         else:
             self.device = torch.device(device)
 
@@ -165,10 +170,10 @@ class SpeakerEmbedder:
         """
         # Handle multi-channel audio (convert to mono)
         if audio.dim() == 2:
-            # If shape is [channels, time] where channels < time, average channels
-            if audio.shape[0] < audio.shape[1]:
+            # Channels-first: [channels, time] where channels is small (1-8)
+            if audio.shape[0] <= 8:
                 audio = audio.mean(dim=0)
-            # If shape is [batch, time], take first sample
+            # Otherwise ambiguous -- take first row
             else:
                 audio = audio[0]
 
@@ -194,7 +199,11 @@ class SpeakerEmbedder:
 
         # Truncate if too long
         if audio.shape[0] > self.max_samples:
-            print(f"⚠️  Audio is {audio.shape[0] / sample_rate:.2f}s, truncating to {self.max_duration_sec}s")
+            import warnings
+            warnings.warn(
+                f"Audio is {audio.shape[0] / self.target_sr:.1f}s, "
+                f"truncating to {self.max_duration_sec}s"
+            )
             audio = audio[:self.max_samples]
 
         return audio

@@ -10,9 +10,11 @@ Compatible with Flash Attention 2 for 10-20x training speedup.
 FIXED: Proper frame-level position tracking during generation with KV-cache.
 """
 
+import threading
+
 import torch
 import torch.nn as nn
-from typing import Optional, Union, Tuple
+from typing import Optional, Union
 from transformers.modeling_outputs import CausalLMOutputWithPast, BaseModelOutputWithPast
 from transformers.utils import TransformersKwargs
 from transformers.processing_utils import Unpack
@@ -248,22 +250,22 @@ class Lfm2ForKaniModel(Lfm2Model):
                     # Conv layers don't use RoPE
                     self.learnable_rope_layers.append(None)
 
-            print(f"✅ Lfm2ForKaniModel initialized:")
+            print("✅ Lfm2ForKaniModel initialized:")
             print(f"   - Audio tokens start: {audio_tokens_start}")
             print(f"   - Tokens per frame: {tokens_per_frame}")
             print(f"   - Speaker embedding: {speaker_emb_dim} -> {config.hidden_size}")
-            print(f"   - Using frame-level position encoding (KaniTTS-2)")
+            print("   - Using frame-level position encoding (KaniTTS-2)")
             print(f"   - Learnable RoPE ENABLED for {total_attention_layers} attention layers")
             print(f"   - Alpha range: [{alpha_min}, {alpha_max}]")
         else:
             self.learnable_rope_layers = None
-            print(f"✅ Lfm2ForKaniModel initialized:")
+            print("✅ Lfm2ForKaniModel initialized:")
             print(f"   - Audio tokens start: {audio_tokens_start}")
             print(f"   - Tokens per frame: {tokens_per_frame}")
             print(f"   - Audio step: {audio_step}")
             print(f"   - Speaker embedding: {speaker_emb_dim} -> {config.hidden_size}")
-            print(f"   - Using frame-level position encoding (KaniTTS-2)")
-            print(f"   - Learnable RoPE DISABLED (standard RoPE)")
+            print("   - Using frame-level position encoding (KaniTTS-2)")
+            print("   - Learnable RoPE DISABLED (standard RoPE)")
 
     def forward(
         self,
@@ -447,6 +449,8 @@ class KaniTTS2ForCausalLM(Lfm2PreTrainedModel, GenerationMixin):
         self._generation_state = None
         # Current speaker embedding for generation (set by generate())
         self._current_speaker_emb = None
+        # Lock to prevent concurrent generation from corrupting state
+        self._generation_lock = threading.Lock()
 
         # Set generation config
         self.generation_config = config.generation_config if hasattr(config, 'generation_config') else None
@@ -712,6 +716,7 @@ class KaniTTS2ForCausalLM(Lfm2PreTrainedModel, GenerationMixin):
 
         This ensures frame-level position tracking starts fresh for each generation call.
         Also handles speaker embeddings if provided.
+        Thread-safe: concurrent calls will serialize via lock.
 
         Args:
             speaker_emb: Optional speaker embedding [batch_size, speaker_emb_dim]
@@ -719,17 +724,18 @@ class KaniTTS2ForCausalLM(Lfm2PreTrainedModel, GenerationMixin):
         # Extract speaker_emb from kwargs if provided
         speaker_emb = kwargs.pop('speaker_emb', None)
 
-        # Reset state before generation
-        self._generation_state = None
-        self._current_speaker_emb = speaker_emb
-
-        try:
-            # Call parent generate
-            result = super().generate(*args, **kwargs)
-        finally:
-            # Clean up state after generation (even if error)
+        with self._generation_lock:
+            # Reset state before generation
             self._generation_state = None
-            self._current_speaker_emb = None
+            self._current_speaker_emb = speaker_emb
+
+            try:
+                # Call parent generate
+                result = super().generate(*args, **kwargs)
+            finally:
+                # Clean up state after generation (even if error)
+                self._generation_state = None
+                self._current_speaker_emb = None
 
         return result
 
@@ -744,7 +750,6 @@ class KaniTTS2ForCausalLM(Lfm2PreTrainedModel, GenerationMixin):
         alpha_min: float = None,
         alpha_max: float = None,
         speaker_emb_dim: int = None,
-        *model_args,
         **kwargs
     ):
         """
@@ -802,6 +807,9 @@ class KaniTTS2ForCausalLM(Lfm2PreTrainedModel, GenerationMixin):
         if speaker_emb_dim is None:
             speaker_emb_dim = getattr(config, 'speaker_emb_dim', 128)
 
+        print(f"   Config: tokens_per_frame={tokens_per_frame}, audio_step={audio_step}, "
+              f"use_learnable_rope={use_learnable_rope}, speaker_emb_dim={speaker_emb_dim}")
+
         # Create model with KaniTTS-2 position encoding and optional learnable RoPE
         model = cls(
             config=config,
@@ -843,12 +851,23 @@ class KaniTTS2ForCausalLM(Lfm2PreTrainedModel, GenerationMixin):
                 model.lm_head.weight = model.model.embed_tokens.weight
                 missing_keys = [k for k in missing_keys if k != 'lm_head.weight']
 
+            # Validate critical custom weights are present
+            critical_prefixes = ['model.speaker_emb_projection']
+            if use_learnable_rope:
+                critical_prefixes.append('model.learnable_rope_layers')
+            critical_missing = [k for k in missing_keys
+                                if any(k.startswith(p) for p in critical_prefixes)]
+            if critical_missing:
+                raise RuntimeError(
+                    f"Critical KaniTTS-2 weights missing from checkpoint "
+                    f"(would be randomly initialized): {critical_missing}"
+                )
+
             # Log loading info
             if missing_keys:
                 print(f"   ⚠️  Missing keys (will use random initialization): {len(missing_keys)}")
-                if len(missing_keys) <= 5:
-                    for key in missing_keys:
-                        print(f"      - {key}")
+                for key in missing_keys:
+                    print(f"      - {key}")
             if unexpected_keys:
                 print(f"   ⚠️  Unexpected keys (ignored): {len(unexpected_keys)}")
 
@@ -857,14 +876,19 @@ class KaniTTS2ForCausalLM(Lfm2PreTrainedModel, GenerationMixin):
             try:
                 generation_config = GenerationConfig.from_pretrained(pretrained_model_name_or_path)
                 model.generation_config = generation_config
-            except Exception:
-                # If generation config not found, create a default one
+            except (OSError, ValueError):
+                # If generation config not found or invalid, create a default one
                 model.generation_config = GenerationConfig()
 
-            # Determine device from base_kwargs or use CUDA if available
+            # Determine device from base_kwargs or use best available
             device_map = base_kwargs.get('device_map', 'auto')
             if device_map == 'auto':
-                device = 'cuda' if torch.cuda.is_available() else 'cpu'
+                if torch.cuda.is_available():
+                    device = 'cuda'
+                elif torch.backends.mps.is_available():
+                    device = 'mps'
+                else:
+                    device = 'cpu'
                 model = model.to(device)
             # else: device_map will handle device placement automatically
         else:

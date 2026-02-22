@@ -1,14 +1,20 @@
 """Core components for Kani-TTS-2 audio generation."""
 import torch
-from nemo.collections.tts.models import AudioCodecModel
 from transformers import AutoTokenizer
 from dataclasses import dataclass
 from typing import Optional, Tuple
 import numpy as np
-import os
 
-# Import KaniTTS-2 custom model
-from .model import KaniTTS2ForCausalLM
+from ._tokens import TokenLayout
+
+
+def _get_device() -> str:
+    """Auto-detect the best available device: cuda > mps > cpu."""
+    if torch.cuda.is_available():
+        return 'cuda'
+    if torch.backends.mps.is_available():
+        return 'mps'
+    return 'cpu'
 
 
 @dataclass
@@ -36,31 +42,24 @@ class TTSConfig:
     speaker_emb_dim: Optional[int] = None  # Dimension of speaker embeddings
 
 
-class NemoAudioPlayer:
+class NemoAudioPlayer(TokenLayout):
     """Handles audio codec operations using NVIDIA NeMo."""
 
     def __init__(self, config: TTSConfig, text_tokenizer_name: Optional[str] = None) -> None:
+        super().__init__(tokeniser_length=config.tokeniser_length)
         self.conf = config
+        from nemo.collections.tts.models import AudioCodecModel
         self.nemo_codec_model = AudioCodecModel\
                 .from_pretrained(self.conf.nanocodec_model).eval()
+        # NeMo codec stays on CPU when using MPS (potential compatibility issues)
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.nemo_codec_model.to(self.device)
         self.text_tokenizer_name = text_tokenizer_name
         if self.text_tokenizer_name:
             self.tokenizer = AutoTokenizer.from_pretrained(self.text_tokenizer_name)
 
-        self.tokeniser_length = self.conf.tokeniser_length
         self.start_of_text = self.conf.start_of_text
         self.end_of_text = self.conf.end_of_text
-        self.start_of_speech = self.tokeniser_length + 1
-        self.end_of_speech = self.tokeniser_length + 2
-        self.start_of_human = self.tokeniser_length + 3
-        self.end_of_human = self.tokeniser_length + 4
-        self.start_of_ai = self.tokeniser_length + 5
-        self.end_of_ai = self.tokeniser_length + 6
-        self.pad_token = self.tokeniser_length + 7
-        self.audio_tokens_start = self.tokeniser_length + 10
-        self.codebook_size = 4032
 
     def output_validation(self, out_ids: torch.Tensor) -> None:
         """Validate that output contains required speech markers."""
@@ -77,10 +76,14 @@ class NemoAudioPlayer:
             raise ValueError('Invalid audio codes sequence!')
 
         audio_codes = out_ids[start_a_idx+1 : end_a_idx]
+        if len(audio_codes) == 0:
+            raise ValueError('No audio tokens generated between speech markers!')
         if len(audio_codes) % 4:
             raise ValueError('The length of the sequence must be a multiple of 4!')
         audio_codes = audio_codes.reshape(-1, 4)
-        audio_codes = audio_codes - torch.tensor([self.codebook_size * i for i in range(4)])
+        audio_codes = audio_codes - torch.tensor(
+            [self.codebook_size * i for i in range(4)], device=audio_codes.device
+        )
         audio_codes = audio_codes - self.audio_tokens_start
         if (audio_codes < 0).sum().item() > 0:
             raise ValueError('Invalid audio tokens!')
@@ -105,7 +108,7 @@ class NemoAudioPlayer:
         audio_codes, len_ = audio_codes.to(self.device), len_.to(self.device)
         with torch.inference_mode():
             reconstructed_audio, _ = self.nemo_codec_model.decode(tokens=audio_codes, tokens_len=len_)
-            output_audio = reconstructed_audio.cpu().detach().numpy().squeeze()
+            output_audio = reconstructed_audio.cpu().detach().numpy().squeeze(0)
 
         if self.text_tokenizer_name:
             text = self.get_text(out_ids)
@@ -120,10 +123,14 @@ class KaniModel:
     def __init__(self, config: TTSConfig, model_name: str, player: NemoAudioPlayer) -> None:
         self.conf = config
         self.player = player
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device = _get_device()
 
         # Pass parameters to from_pretrained
         # None values will trigger reading from model config
+        # MPS does not reliably support bfloat16; use float16 there
+        model_dtype = torch.float16 if self.device == 'mps' else torch.bfloat16
+
+        from .model import KaniTTS2ForCausalLM
         self.model = KaniTTS2ForCausalLM.from_pretrained(
             model_name,
             audio_tokens_start=self.player.audio_tokens_start,
@@ -133,7 +140,7 @@ class KaniModel:
             alpha_min=self.conf.alpha_min,
             alpha_max=self.conf.alpha_max,
             speaker_emb_dim=self.conf.speaker_emb_dim,
-            torch_dtype=torch.bfloat16,
+            torch_dtype=model_dtype,
             device_map=self.conf.device_map,
         )
 
@@ -145,7 +152,7 @@ class KaniModel:
         self.status = 'no_language_tags'
         self.language_tags_list = []
         if self.language_settings is not None:
-            self.status = self.language_settings.get('status')
+            self.status = self.language_settings.get('status', 'no_language_tags')
             self.language_tags_list = self.language_settings.get('language_tags_list', [])
 
     def get_input_ids(self, text_prompt: str, language_tag: str = None) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -226,15 +233,16 @@ class KaniModel:
             repetition_penalty: Repetition penalty (default: 1.1)
         """
         if (self.status == 'available_language_tags') and (language_tag is None):
-            print('='*40)
-            print('!!! YOU NEED TO SELECT THE LANGUAGE TAG !!!')
-            print(f'Languages available:')
-            print(*self.language_tags_list, sep='\n')
-            print('='*40)
+            available = ', '.join(self.language_tags_list)
+            raise ValueError(
+                f"This model requires a language_tag. "
+                f"Available tags: {available}"
+            )
         elif (self.status == 'no_language_tags') and (language_tag is not None):
-            print('='*40)
-            print('!!! This model does not support language tag selection !!!')
-            print('='*40)
+            raise ValueError(
+                f"This model does not support language tags, "
+                f"but language_tag='{language_tag}' was provided."
+            )
 
         input_ids, attention_mask = self.get_input_ids(text, language_tag)
         model_output = self.model_request(input_ids, attention_mask,
